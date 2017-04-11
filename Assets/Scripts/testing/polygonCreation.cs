@@ -28,7 +28,9 @@ public class polygonCreation : MonoBehaviour {
     private DebugLines debug;
     private float timePassed;
     private List<Line> polyCuts;
+    private List<Line> linesToDraw;
     private bool generated = false;
+    private bool triangulated = false;
     private bool pause = false;
 
 
@@ -54,6 +56,7 @@ public class polygonCreation : MonoBehaviour {
 void Start () {
 
         polyCuts = new List<Line>();
+        linesToDraw = new List<Line>();
         debug = gameObject.GetComponent<DebugLines>();
 
 	}
@@ -72,6 +75,9 @@ void Start () {
                     v.selfDestruct();
                 }
                 while (polyCuts.Count > 0) {
+                    polyCuts.RemoveAt(0);
+                }
+                while (linesToDraw.Count > 0) {
                     polyCuts.RemoveAt(0);
                 }
 
@@ -97,26 +103,37 @@ void Start () {
         }
         generatePolygon();
         */
-        
+
         if (Input.GetKeyDown(KeyCode.Space)) {
 
-            if (!generated) {
+            if (!generated && !triangulated) {
                 while (vertices.Count > 0) {
                     Vertex v = vertices[0];
                     vertices.RemoveAt(0);
                     v.selfDestruct();
                 }
+                while (innerVertices.Count > 0) {
+                    Vertex v = innerVertices[0];
+                    innerVertices.RemoveAt(0);
+                    v.selfDestruct();
+                }
                 while (polyCuts.Count > 0) {
                     polyCuts.RemoveAt(0);
+                }
+                while (linesToDraw.Count > 0) {
+                    linesToDraw.RemoveAt(0);
                 }
 
                 generatePolygon();
 
                 generated = true;
-            } else {
+            } else if (generated && !triangulated) {
                 addInternalVertices();
-                //triangulatePolygon();
+                triangulated = true;
+            } else {
+                triangulatePolygon();
                 generated = false;
+                triangulated = false;
             }
         }
         
@@ -129,6 +146,10 @@ void Start () {
             debug.addLine(polyCuts[i].start, polyCuts[i].end, polyCuts[i].mode);
             Debug.DrawLine(polyCuts[i].start, polyCuts[i].end, Color.red);
         }
+        for (int i = 0; i < linesToDraw.Count; i++) {
+            debug.addLine(linesToDraw[i].start, linesToDraw[i].end, linesToDraw[i].mode);
+            //Debug.DrawLine(polyCuts[i].start, polyCuts[i].end, Color.red);
+        }
     }
 
     // Randomly generates a new polygon for testing
@@ -139,7 +160,8 @@ void Start () {
         int count = Mathf.FloorToInt(Random.Range(minVertices, maxVertices));
 
         vertices = new List<Vertex>(count);
-        
+        innerVertices = new List<Vertex>(count);
+
         Vector2 center = new Vector2(16f, 9f);
         int tries = 0;
 
@@ -308,31 +330,26 @@ void Start () {
         #region Ear Cutting
 
         // four arrays
-        //LinkedList<Vertex> poly = new LinkedList<Vertex>();
-        //LinkedList<Vertex> reflex = new LinkedList<Vertex>();
-        //LinkedList<Vertex> convex = new LinkedList<Vertex>();
-        //LinkedList<Vertex> ears = new LinkedList<Vertex>();
-
-        List<Vertex> poly =   new List<Vertex>(vertices.Count);
-        List<Vertex> reflex = new List<Vertex>(vertices.Count);
-        List<Vertex> convex = new List<Vertex>(vertices.Count);
-        List<Vertex> ears =   new List<Vertex>(vertices.Count);
+        List<Vertex> poly =   new List<Vertex>(innerVertices.Count);
+        List<Vertex> reflex = new List<Vertex>(innerVertices.Count);
+        List<Vertex> convex = new List<Vertex>(innerVertices.Count);
+        List<Vertex> ears =   new List<Vertex>(innerVertices.Count);
 
         // populate lists
-        for (int i = 0; i < vertices.Count; i++) {
+        for (int i = 0; i < innerVertices.Count; i++) {
 
             // every vertex goes in
-            poly.Add(vertices[i]);
+            poly.Add(innerVertices[i]);
 
             // find whether the angle is convex or reflex
-            float det = determinate(vertices[(i - 1 + vertices.Count) % vertices.Count].VertexLocation, vertices[i].VertexLocation, vertices[(i + 1) % vertices.Count].VertexLocation);
+            float det = determinate(innerVertices[(i - 1 + innerVertices.Count) % innerVertices.Count].VertexLocation, innerVertices[i].VertexLocation, innerVertices[(i + 1) % innerVertices.Count].VertexLocation);
 
             if (det < 0) {
-                convex.Add(vertices[i]);
-                vertices[i].GetComponentInParent<SpriteRenderer>().color = new Color(255, 0, 0, 1f);
+                convex.Add(innerVertices[i]);
+                innerVertices[i].GetComponentInParent<SpriteRenderer>().color = new Color(255, 0, 0, 1f);
             } else {
-                reflex.Add(vertices[i]);
-                vertices[i].GetComponentInParent<SpriteRenderer>().color = new Color(0, 255, 0, 1f);
+                reflex.Add(innerVertices[i]);
+                innerVertices[i].GetComponentInParent<SpriteRenderer>().color = new Color(0, 255, 0, 1f);
             }
         }
 
@@ -341,7 +358,7 @@ void Start () {
             Vertex prev = poly[(convex[i].ID - 1 + poly.Count) % poly.Count];
             Vertex next = poly[(convex[i].ID + 1) % poly.Count];
 
-            //Debug.Log("Prev: " + prev.ID + " Curr: " + convex[i].ID + " Next: " + next.ID);
+            Debug.Log("Prev: " + prev.ID + " Curr: " + convex[i].ID + " Next: " + next.ID);
 
             // if there's no reflex vertices, all of them are ears
             if (reflex.Count == 0) {
@@ -401,8 +418,8 @@ void Start () {
                 Vertex next = poly[(position + 1) % poly.Count];
 
                 // debug and display
-                Debug.Log("Clipping triangle: <" + prev.ID + ", " + clipped.ID + ", " + next.ID + ">");
-                polyCuts.Add(new Line(prev.VertexLocation, next.VertexLocation, 4));
+                //Debug.Log("Clipping triangle: <" + prev.ID + ", " + clipped.ID + ", " + next.ID + ">");
+                polyCuts.Add(new Line(prev.VertexLocation, next.VertexLocation, 6));
 
                 // remove cut vertex from lists
                 poly.RemoveAt(position);
@@ -767,19 +784,209 @@ void Start () {
 
 	bool addInternalVertices() {
 
-        foreach (Vertex v in vertices) {
-            Vector2 bisect = bisectAngle(v.PreviousVertex.VertexLocation, v.VertexLocation, v.NextVertex.VertexLocation);
+        // list of the normals from the center of every line
+            // the end will be set to be where they would go out of the shape
+        List<Line> lineNormals = new List<Line>();
+        // list of the points where the normals cross
+        List<Vector2> normalCrosses = new List<Vector2>();
 
-            debug.addLine(v.VertexLocation, v.VertexLocation + bisect * 2, 0);
-            polyCuts.Add(new Line(v.VertexLocation, v.VertexLocation + bisect * 2, 0));
+        // find the normals
+        for (int i = 0; i < vertices.Count; i++) {
+            // find the midpoint and the normal
+            Vector2 mid = (vertices[i].VertexLocation + vertices[i].NextVertex.VertexLocation) / 2;
+            Vector2 lineVec = (vertices[i].NextVertex.VertexLocation - vertices[i].VertexLocation).normalized;
+            Vector2 norm = new Vector2(lineVec.y, -lineVec.x);
+
+            lineNormals.Add(new Line(mid, norm * 100, 1));
+
+            //GameObject t = GameObject.Instantiate(vertPrefab);
+            //t.transform.position = mid;
         }
 
-		return true;
+        // float to see how far in we can push the shape
+        float shortestSegment = float.MaxValue;
+
+        // find where the normals cross the shape
+        for (int i = 0; i < lineNormals.Count; i++) {
+
+            normalCrosses.Add(Vector2.zero);
+            float closest = float.MaxValue;
+
+            for (int j = 0; j < vertices.Count; j++) {
+
+				if (i == j) {
+					continue;
+				}
+
+                // find out if the lines cross at any point
+                Vector2 point = pointOnLines(lineNormals[i].start, lineNormals[i].end, vertices[j].VertexLocation, vertices[j].NextVertex.VertexLocation - vertices[j].VertexLocation);
+
+
+                if (point.x == -1 && point.y == -1) {
+                    // lines don't cross
+                    continue;
+                }
+                else {
+                    // lines cross, see if it's a closer crossing point
+					float dist = ((Vector2)lineNormals[i].start - point).magnitude;
+                    if (closest > dist) {
+                        closest = dist;
+
+                        // this is the shortest distance we can go in right now
+                        if (closest < shortestSegment) {
+                            shortestSegment = closest;
+                        }
+
+                        lineNormals[i].mode = 3;
+						normalCrosses [i] = point;
+                    }
+                }
+            }
+
+            lineNormals[i].end = normalCrosses[i];
+        }
+
+        // list of the inner lines
+        List<Line> crossSegments = new List<Line>();
+        // move the crossSegments out a distance from the line equal to the shortest segment / 2
+        shortestSegment /= 4f;
+
+        for (int i = 0; i < lineNormals.Count; i++) {
+            Vector2 norm = (lineNormals[i].end - lineNormals[i].start).normalized;
+            Vector2 right = new Vector2(norm.y, -norm.x);
+            Vector2 _start = vertices[i].VertexLocation + (norm * shortestSegment) + (right * 10);
+            Vector2 _end = vertices[i].NextVertex.VertexLocation + (norm * shortestSegment) + (right * -10);
+
+            crossSegments.Add(new Line(_start, _end, 3));
+        }
+
+        int count = crossSegments.Count;
+        // see where the lines cross and move the points
+        for (int i = 0; i < count; i++) {
+
+            // check for the new end vertex
+            Vector2 point = pointOnLines(crossSegments[i].start, (crossSegments[i].end - crossSegments[i].start), crossSegments[(i + 1) % count].start, (crossSegments[(i + 1) % count].end - crossSegments[(i + 1) % count].start));
+            
+            if (point.x != -1 && point.y != -1) {
+                crossSegments[i].end = point;
+                crossSegments[(i + 1) % count].start = point;
+            }
+
+            // check for the new start vertex
+            point = pointOnLines(crossSegments[i].start, (crossSegments[i].end - crossSegments[i].start), crossSegments[(i - 1 + count) % count].start, (crossSegments[(i - 1 + count) % count].end - crossSegments[(i - 1 + count) % count].start));
+            //Debug.Log(point);
+
+            if (point.x != -1 && point.y != -1) {
+                crossSegments[i].start = point;
+                crossSegments[(i - 1 + count) % count].end = point;
+            }
+
+            GameObject t = GameObject.Instantiate(vertPrefab);
+            t.GetComponent<SpriteRenderer>().color = Color.red;
+            Vertex v = t.GetComponent<Vertex>();
+            innerVertices.Add(v);
+        }
+        
+        for (int i = 0; i < lineNormals.Count; i++) {
+
+            //linesToDraw.Add(lineNormals[i]);
+			linesToDraw.Add(new Line(lineNormals[i].start, normalCrosses[i], 4));
+            linesToDraw.Add(new Line(crossSegments[i].start, crossSegments[i].end, crossSegments[i].mode));
+
+            innerVertices[i].setPreviousVertex(innerVertices[(i - 1 + innerVertices.Count) % innerVertices.Count]);
+            innerVertices[i].setNextVertex(innerVertices[(i + 1) % innerVertices.Count]);
+            innerVertices[i].setVertexLocation(crossSegments[i].start);
+            innerVertices[i].gameObject.name = "Inner Vertex #" + i;
+            innerVertices[i].setID(vertices[i].ID);
+        }
+
+
+        #region Bisecting Angles
+        /*
+        List<Line> bisectingAngles = new List<Line>();
+
+        // set up bisecting lines
+        foreach (Vertex v in vertices) {
+            Vector2 bisect = bisectAngle(v.PreviousVertex.VertexLocation, v.VertexLocation, v.NextVertex.VertexLocation);
+            
+            bisectingAngles.Add(new Line(v.VertexLocation, bisect * 100000, v.ID));  // using the color int to store the id
+        }
+
+        // find the points where the lines would go out of the shape
+        List<Line> crossSegments = new List<Line>();
+        float shortestDist = float.MaxValue;
+
+        for (int i = 0; i < bisectingAngles.Count; i++) {
+
+            crossSegments.Add(new Line(bisectingAngles[i].start, bisectingAngles[i].end, 1));
+            float closestCross = float.MaxValue;
+
+            for (int j = 0; j < vertices.Count; j++) {
+
+                // check to see if the line contains the point we're checking
+                if (bisectingAngles[i].mode == j) {
+                    continue;
+                }
+                if (vertices[j].NextVertex.ID == bisectingAngles[i].mode) {
+                    continue;
+                }
+
+                // find out if the lines cross at any point
+                Vector2 point = pointOnLines(bisectingAngles[i].start, bisectingAngles[i].end, vertices[j].VertexLocation, vertices[j].NextVertex.VertexLocation - vertices[j].VertexLocation);
+
+                if (point.x == -1 && point.y == -1) {
+                    // lines don't cross
+                    continue;
+                } else {
+                    // lines cross, see if it's a closer crossing point
+                    float dist = Vector2.SqrMagnitude((Vector2)bisectingAngles[i].start - point);
+                    if (closestCross > dist) {
+                        closestCross = dist;
+
+                        crossSegments[i].end = point;
+                        crossSegments[i].mode = 2;
+                    }
+
+                    if (shortestDist > dist) {
+                        shortestDist = dist;
+                    }
+                }
+            }
+        }
+
+
+
+        // find the points where the max position inside the shape is for each of them
+        List<Line> innerCrosses = new List<Line>();
+
+        for (int i = 0; i < crossSegments.Count; i++) {
+            crossSegments[i].end = crossSegments[i].start + (bisectingAngles[i].end.normalized * Mathf.Sqrt(shortestDist) * 0.5f);
+        }
+        for (int i = 0; i < crossSegments.Count; i++) {
+            innerCrosses.Add(new Line(crossSegments[i].end, crossSegments[(i + 1) % crossSegments.Count].end, 3));
+        }
+
+        for (int i = 0; i < innerCrosses.Count; i++) {
+
+            linesToDraw.Add(innerCrosses[i]);
+            linesToDraw.Add(new Line(crossSegments[i].start, crossSegments[i].end, 4));
+        }
+
+        */
+        #endregion
+
+        return true;
 	}
 
 	Vector2 bisectAngle(Vector2 _a, Vector2 _b, Vector2 _c) {
+        float det = determinate(_a, _b, _c);
 
-        return ((_a - _b).normalized + (_c - _b).normalized).normalized;
+        int flip = 1;
+        if (det > 0) {
+            flip = -1;
+        }
+        
+        return (((_a - _b).normalized + (_c - _b).normalized).normalized * flip);
 	}
 
     float determinate(Vector2 _a, Vector2 _b, Vector2 _c) {
@@ -906,6 +1113,51 @@ void Start () {
         }
 
         return dist;
+    }
+
+    // function to cross two 2D vectors
+    float crossVec2(Vector2 _v, Vector2 _w) {
+        return ((_v.x * _w.y) - (_v.y * _w.x));
+    }
+
+    // function to find the point where two lines cross
+    Vector2 pointOnLines(Vector2 _p, Vector2 _r, Vector2 _q, Vector2 _s) {
+
+        // initialize variables
+        Vector2 point = new Vector2(-1, -1);
+        float t, u;
+
+        // calcualte parts
+        float cross = crossVec2(_r, _s);
+        Vector2 mid = _q - _p;
+
+        // find t and u where the two lines cross
+        t = crossVec2(mid, _s);
+        u = crossVec2(mid, _r);
+
+        // find the crossing point or whether they don't cross
+        if (cross == 0) {
+            if (t == 0) {
+                // lines are collinear
+                return point;
+            } else {
+                // lines are parallel
+                return point;
+            }
+        } else {
+            t /= cross;
+            u /= cross;
+
+            if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+                // lines cross
+                point = _p + (_r * t);
+                return point;
+            } else {
+                // lines would cross in the future if they continued on
+                return point;
+            }
+        }
+        
     }
 
     bool lineCrossingCheck(Vector2 _p1, Vector2 _p2, Vector2 _p3, Vector2 _p4) {

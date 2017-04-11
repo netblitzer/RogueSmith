@@ -8,18 +8,6 @@ public class DebugLines : MonoBehaviour {
     public Material debugMaterial;
     public Color[] colors;
 
-    private class Line {
-        public Vector3 start;
-        public Vector3 end;
-        public int mode;
-
-        public Line (Vector3 _start, Vector3 _end, int _mode) {
-            start = _start;
-            end = _end;
-            mode = _mode;
-        }
-    }
-
 	// Use this for initialization
 	void Start () {
         lineRenderQueue = new Queue();

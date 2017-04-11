@@ -32,19 +32,7 @@ public class polygonCreation : MonoBehaviour {
     private bool generated = false;
     private bool triangulated = false;
     private bool pause = false;
-
-
-    private class Line {
-        public Vector3 start;
-        public Vector3 end;
-        public int mode;
-
-        public Line(Vector3 _start, Vector3 _end, int _mode) {
-            start = _start;
-            end = _end;
-            mode = _mode;
-        }
-    }
+    
      public static void ClearLogConsole() {
         Assembly assembly = Assembly.GetAssembly(typeof(SceneView));
         var logEntries = assembly.GetType("UnityEditorInternal.LogEntries");

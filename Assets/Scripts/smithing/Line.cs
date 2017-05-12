@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class Line : MonoBehaviour {
+public class Line {
     public Vector3 start;
     public Vector3 end;
     public int mode;    // used for color or just an extra int for storage

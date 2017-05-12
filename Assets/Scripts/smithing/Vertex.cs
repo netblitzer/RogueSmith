@@ -95,4 +95,20 @@ public class Vertex : MonoBehaviour {
 
         Destroy(gameObject);
     }
+
+	public string toJson (int tabCount) {
+		string tabs = "";
+		for (int i = 0; i < tabCount; i++) {
+			tabs += "\t";
+		}
+		string json = tabs + "{\n";
+
+		json += tabs + "\t\"ID\": " + ID + "\n";
+		json += tabs + "\t\"vertLoc\": " + JsonUtility.ToJson (vertLoc) + "\n";
+		json += tabs + "\t\"nextVert\": " + nextVert.ID + "\n";
+		json += tabs + "\t\"prevVert\": " + prevVert.ID + "\n";
+
+		json += tabs + "}";
+		return json;
+	}
 }

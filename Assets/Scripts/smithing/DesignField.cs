@@ -33,8 +33,6 @@ public class DesignField : MonoBehaviour,
     }
 
     public void OnPointerDown(PointerEventData e) {
-        Debug.Log("clicked");
-
         if (e.button == PointerEventData.InputButton.Left) {
             sm.fieldClicked(e.pressPosition);
         }

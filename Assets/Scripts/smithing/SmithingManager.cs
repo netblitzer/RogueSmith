@@ -2,14 +2,15 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Resources;
+using UnityEngine.UI;
 
 public class SmithingManager : MonoBehaviour {
 
     private List<Vertex> vertices; // Stores all the vertices
     private List<Vertex> innerVertices;
 
-    public GameObject handlePrefab; // Default handle for the vertices
-    private GameObject vertexPointer; // Object that acts as the pointer
+    public GameObject vertPrefab; // Default handle for the vertices
+    public GameObject vertexPointer; // Object that acts as the pointer
 
     private DebugLines lines;
     private List<Line> polyCuts;
@@ -17,10 +18,10 @@ public class SmithingManager : MonoBehaviour {
 
     private Vector2 projPoint;
 
-    public Mesh weapon;
-    public int[] tris;
-    public Vector2[] uvs;
-    public Vector3[] verts;
+	private Weapon w;
+
+	private WeaponSaver saveManager;
+	private InputField nameField;
 
     private string mode = "none";
 
@@ -36,7 +37,7 @@ public class SmithingManager : MonoBehaviour {
         linesToDraw = new List<Line>();
         polyCuts = new List<Line>();
 
-        vertexPointer = GameObject.Instantiate(handlePrefab);
+		vertexPointer = GameObject.Instantiate(vertPrefab);
         vertexPointer.name = "Pointer";
 
         lines = GameObject.Find("SmithingManager").GetComponent<DebugLines>();
@@ -45,6 +46,14 @@ public class SmithingManager : MonoBehaviour {
 
         moving = null;
         linkCorrection = false;
+
+		w = new Weapon ();
+		w.Init (null, null, vertPrefab);
+
+		saveManager = new WeaponSaver ();
+		saveManager.Init ();
+		nameField = GameObject.Find ("NameInput").GetComponent<InputField> ();
+
     }
 
     // Update is called once per frame
@@ -63,7 +72,21 @@ public class SmithingManager : MonoBehaviour {
         foreach (Vertex vt in vertices) {
             vt.gameObject.GetComponent<SpriteRenderer>().color = new Color(255, 255, 255);
             vt.mode = 0;
-        }
+		}
+
+		for (int i = 0; i < w.vertices.Count; i++) {
+			lines.addLine(w.vertices[i].VertexLocation, w.vertices[(i + 1) % w.vertices.Count].VertexLocation, 2);
+			//Debug.DrawLine(w.vertices[i].VertexLocation, w.vertices[(i + 1) % w.vertices.Count].VertexLocation, Color.green);
+			//vertices[i].GetComponentInParent<SpriteRenderer>().color = new Color(255, 255, 255, 1f);
+		}
+		for (int i = 0; i < polyCuts.Count; i++) {
+			lines.addLine(polyCuts[i].start, polyCuts[i].end, polyCuts[i].mode);
+			Debug.DrawLine(polyCuts[i].start, polyCuts[i].end, Color.red);
+		}
+		for (int i = 0; i < linesToDraw.Count; i++) {
+			lines.addLine(linesToDraw[i].start, linesToDraw[i].end, linesToDraw[i].mode);
+			//Debug.DrawLine(polyCuts[i].start, polyCuts[i].end, Color.red);
+		}
 
         linkCorrection = false;
 
@@ -262,84 +285,181 @@ public class SmithingManager : MonoBehaviour {
 
     }
 
+	// Randomly generates a new polygon for testing
+	public void generatePolygon () {
+
+		while (w.vertices.Count > 0) {
+			Vertex v = w.vertices [0];
+			w.vertices.RemoveAt (0);
+			v.selfDestruct ();
+		}
+		while (w.innerVertices.Count > 0) {
+			Vertex v = w.innerVertices [0];
+			w.innerVertices.RemoveAt (0);
+			v.selfDestruct ();
+		}
+
+		polyCuts.Clear ();
+		linesToDraw.Clear ();
+
+
+		bool succeeded = true;
+		float minAngle = 80;
+		float maxAngle = 80;
+
+		int count = Mathf.FloorToInt(Random.Range(4, 5));
+
+		Vector2 center = new Vector2(16f, 9f);
+		int tries = 0;
+
+		for (int k = 0; k < count; k++) {
+			bool linkCorrection = false; // If true, will correct the links between vertices. Acts like a master switch.
+			int lineCheck = -1;
+			tries = 0;
+
+			Vector2 randPos = new Vector2(Random.Range(0, center.x * 2f), Random.Range(0, center.y * 2f));
+
+			foreach (Vertex vt in w.vertices) {
+				vt.gameObject.GetComponent<SpriteRenderer>().color = new Color(255, 255, 255);
+				vt.mode = 0;
+			}
+
+			float closestLineDist = float.MaxValue; // initialize closest distance to max value
+
+			// see which line is closest to the mouse
+			for (int i = 0; i < w.vertices.Count; i++) {
+				if (w.vertices[i].PreviousVertex != null) {
+
+					// get distance to line
+					float dist = distanceFromLine(w.vertices[i].PreviousVertex.VertexLocation, w.vertices[i].VertexLocation, randPos, closestLineDist);
+					// compare to current closest
+					if (dist < closestLineDist) {
+
+						// set new closest
+						lineCheck = i;
+						closestLineDist = dist;
+					}
+				}
+			}
+			// Check to make sure the position won't cross any lines or make too sharp of angles)
+			if (lineCheck > -1 && w.vertices.Count > 1 && tries < 10000) {
+				float distNext = (randPos - w.vertices[lineCheck].NextVertex.VertexLocation).magnitude;
+				float distPrev = (randPos - w.vertices[lineCheck].VertexLocation).magnitude;
+
+				if (distPrev < 4f || distNext < 4f) {
+					k--;
+					tries++;
+					continue;
+				}
+
+				float newAng = Mathf.Abs(angleBetweenLines((randPos - w.vertices[lineCheck].VertexLocation), (randPos - w.vertices[lineCheck].NextVertex.VertexLocation)));
+				//Debug.Log("Angle: " + newAng + "Vertex: " + k);
+				if (newAng < 90 - maxAngle || newAng > 90 + maxAngle) {
+					k--;
+					tries++;
+					continue;
+				}
+				else if (w.vertices.Count > 2) {
+					float prevAng = Mathf.Abs(angleBetweenLines((w.vertices[lineCheck].VertexLocation - w.vertices[lineCheck].PreviousVertex.VertexLocation), (randPos - w.vertices[lineCheck].VertexLocation)));
+					float nextAng = Mathf.Abs(angleBetweenLines((randPos - w.vertices[lineCheck].NextVertex.VertexLocation), (w.vertices[lineCheck].NextVertex.NextVertex.VertexLocation - w.vertices[lineCheck].NextVertex.VertexLocation)));
+
+					if ((prevAng <  90 - maxAngle || prevAng > 90 + maxAngle) && (nextAng < 90 - maxAngle || nextAng > 90 + maxAngle)) {
+						k--;
+						tries++;
+						continue;
+					}
+				}
+			}
+			else if (w.vertices.Count > 0) {
+				float distPrev = (randPos - w.vertices[0].VertexLocation).magnitude;
+
+				if (distPrev < 2f) {
+					k--;
+					tries++;
+					continue;
+				}
+			}
+
+			if (tries > 10)
+				Debug.Log("Max tries hit");
+
+			if (lineCheck > -1 && w.vertices.Count > 4) {
+				bool crossed = false;
+				for (int i = 0; i < w.vertices.Count; i++) {
+					if (lineCrossingCheck(randPos, w.vertices[lineCheck].VertexLocation, w.vertices[(lineCheck + i + 1) % w.vertices.Count].VertexLocation, w.vertices[(lineCheck + i + 2) % w.vertices.Count].VertexLocation)) {
+						crossed = true;
+					}
+				}
+				if (crossed) {
+					k--;
+					tries++;
+					continue;
+				}
+			}
+
+			// Adding new w.vertices
+
+			GameObject v = GameObject.Instantiate(vertPrefab);
+			Vertex vx = v.GetComponent<Vertex>();
+
+			if (!vx.setVertexLocation(randPos)) {
+				GameObject.Destroy(v);
+			}
+			else if (lineCheck > -1) {
+				linkCorrection = true;
+
+				if (w.vertices.Count < 3) {
+
+					// Checks to make sure the w.vertices are added in counter-clockwise pattern
+
+					Vector2 lineVec = (w.vertices[0].PreviousVertex.VertexLocation - w.vertices[0].VertexLocation).normalized;
+					lineVec = new Vector2(lineVec.y, -lineVec.x);
+
+					Vector2 adjMouse = randPos - w.vertices[0].VertexLocation;
+					float dir = Vector2.Dot(adjMouse, lineVec);
+
+					if (dir > 0) {
+						w.vertices.Insert(2, vx);
+					}
+					else {
+						w.vertices.Insert(1, vx);
+					}
+				}
+				else {
+					w.vertices.Insert(lineCheck, vx);
+				}
+			}
+			else {
+				linkCorrection = true;
+
+				w.vertices.Insert(0, vx);
+			}
+
+
+			// Make sure the links are all in place correctly
+			if (linkCorrection) {
+				correctVertexLinks();
+				//Debug.Log("Correcting links");
+			}
+		}
+
+		addInternalVertices ();
+		triangulatePolygon ();
+	}
+
     #region Input Methods
 
     public void fieldClicked (Vector2 _pos) {
-        Debug.Log(_pos);
-
-        Vector2 pos = Camera.main.ScreenToWorldPoint(_pos);
-
-        if (mode == "adding") {
-
-            int lineCheck = -1;
-            float closest = float.MaxValue;
-
-            // see which line is closest to the mouse
-            for (int i = 0; i < vertices.Count; i++) {
-                if (vertices[i].PreviousVertex != null) {
-
-                    // get distance to line
-                    float dist = distanceFromLine(vertices[i].PreviousVertex.VertexLocation, vertices[i].VertexLocation, pos, closest);
-                    // compare to current closest
-                    if (dist < closest) {
-
-                        // set new closest
-                        lineCheck = i;
-                        closest = dist;
-                    }
-                }
-            }
-
-            // draw lines
-            if (lineCheck > -1) {
-
-                // create perpendicular line
-                lines.addLine(pos, projPoint, 3);
-                lines.addLine(pos, vertices[lineCheck].VertexLocation, 2);
-                lines.addLine(pos, vertices[lineCheck].PreviousVertex.VertexLocation, 2);
-
-                //Debug.Log("Distance: " + closestLineDist);
-            }
-
-            GameObject v = GameObject.Instantiate(handlePrefab);
-            Vertex vx = v.GetComponent<Vertex>();
-
-            // fail state if we can't create the point for some reason
-            if (!vx.setVertexLocation(pos)) {
-                GameObject.Destroy(v);
-            }
-            else if (lineCheck > -1) {
-                linkCorrection = true;
-
-                // counter-clockwise correction for only two vertices
-                if (vertices.Count < 3) {
-
-                    // Checks to make sure the vertices are added in counter-clockwise pattern
-
-                    Vector2 lineVec = (vertices[0].PreviousVertex.VertexLocation - vertices[0].VertexLocation).normalized;
-                    lineVec = new Vector2(lineVec.y, -lineVec.x);
-
-                    Vector2 adjMouse = pos - vertices[0].VertexLocation;
-                    float dir = Vector2.Dot(adjMouse, lineVec);
-
-                    if (dir > 0) {
-                        vertices.Insert(2, vx);
-                    }
-                    else {
-                        vertices.Insert(1, vx);
-                    }
-                }
-                else {
-                    // if there's more than three vertices, it will already be in C-CW order
-                    vertices.Insert(lineCheck, vx);
-                }
-            }
-            else {
-                linkCorrection = true;
-
-                vertices.Insert(0, vx);
-            }
-        }
+		switch (mode) {
+		case "adding":
+			//w.add (_pos, true);
+			break;
+		case "removing":
+			//w.remove (_pos, true);
+			break;
+		default:
+			break;
+		}
     }
 
 
@@ -351,35 +471,35 @@ public class SmithingManager : MonoBehaviour {
     /// </summary>
     void correctVertexLinks() {
 
-        if (vertices.Count > 1) {
+        if (w.vertices.Count > 1) {
 
-            for (int i = 0; i < vertices.Count; i++) {
-                if (vertices[i].ID != i)
-                    vertices[i].setID(i);
+            for (int i = 0; i < w.vertices.Count; i++) {
+                if (w.vertices[i].ID != i)
+                    w.vertices[i].setID(i);
 
-                vertices[i].name = "Vertex #" + i;
+                w.vertices[i].name = "Vertex #" + i;
             }
             
-            for (int i = 0; i < vertices.Count; i++) {
+            for (int i = 0; i < w.vertices.Count; i++) {
 
                 // Next vertex check
-                if (i == vertices.Count - 1) {
-                    if (vertices[i].NextVertex == null || vertices[vertices.Count - 1].NextVertex.ID != 0)
-                        vertices[vertices.Count - 1].setNextVertex(vertices[0]);
+                if (i == w.vertices.Count - 1) {
+                    if (w.vertices[i].NextVertex == null || w.vertices[w.vertices.Count - 1].NextVertex.ID != 0)
+                        w.vertices[w.vertices.Count - 1].setNextVertex(w.vertices[0]);
                 }
                 else {
-                    if (vertices[i].NextVertex == null || vertices[i].NextVertex.ID != i + 1)
-                        vertices[i].setNextVertex(vertices[i + 1]);
+                    if (w.vertices[i].NextVertex == null || w.vertices[i].NextVertex.ID != i + 1)
+                        w.vertices[i].setNextVertex(w.vertices[i + 1]);
                 }
 
                 // Previous vertex check
                 if (i == 0) {
-                    if (vertices[i].PreviousVertex == null || vertices[0].PreviousVertex.ID != vertices.Count - 1)
-                        vertices[0].setPreviousVertex(vertices[vertices.Count - 1]);
+                    if (w.vertices[i].PreviousVertex == null || w.vertices[0].PreviousVertex.ID != w.vertices.Count - 1)
+                        w.vertices[0].setPreviousVertex(w.vertices[w.vertices.Count - 1]);
                 }
                 else {
-                    if (vertices[i].PreviousVertex == null || vertices[i].PreviousVertex.ID != i - 1)
-                        vertices[i].setPreviousVertex(vertices[i - 1]);
+                    if (w.vertices[i].PreviousVertex == null || w.vertices[i].PreviousVertex.ID != i - 1)
+                        w.vertices[i].setPreviousVertex(w.vertices[i - 1]);
                 }
 
             }
@@ -639,10 +759,10 @@ public class SmithingManager : MonoBehaviour {
         List<Vector2> normalCrosses = new List<Vector2>();
 
         // find the normals
-        for (int i = 0; i < vertices.Count; i++) {
+        for (int i = 0; i < w.vertices.Count; i++) {
             // find the midpoint and the normal
-            Vector2 mid = (vertices[i].VertexLocation + vertices[i].NextVertex.VertexLocation) / 2;
-            Vector2 lineVec = (vertices[i].NextVertex.VertexLocation - vertices[i].VertexLocation).normalized;
+            Vector2 mid = (w.vertices[i].VertexLocation + w.vertices[i].NextVertex.VertexLocation) / 2;
+            Vector2 lineVec = (w.vertices[i].NextVertex.VertexLocation - w.vertices[i].VertexLocation).normalized;
             Vector2 norm = new Vector2(lineVec.y, -lineVec.x);
 
             lineNormals.Add(new Line(mid, norm * 100, 1));
@@ -660,14 +780,14 @@ public class SmithingManager : MonoBehaviour {
             normalCrosses.Add(Vector2.zero);
             float closest = float.MaxValue;
 
-            for (int j = 0; j < vertices.Count; j++) {
+            for (int j = 0; j < w.vertices.Count; j++) {
 
                 if (i == j) {
                     continue;
                 }
 
                 // find out if the lines cross at any point
-                Vector2 point = pointOnLines(lineNormals[i].start, lineNormals[i].end, vertices[j].VertexLocation, vertices[j].NextVertex.VertexLocation - vertices[j].VertexLocation);
+                Vector2 point = pointOnLines(lineNormals[i].start, lineNormals[i].end, w.vertices[j].VertexLocation, w.vertices[j].NextVertex.VertexLocation - w.vertices[j].VertexLocation);
 
 
                 if (point.x == -1 && point.y == -1) {
@@ -702,8 +822,8 @@ public class SmithingManager : MonoBehaviour {
         for (int i = 0; i < lineNormals.Count; i++) {
             Vector2 norm = (lineNormals[i].end - lineNormals[i].start).normalized;
             Vector2 right = new Vector2(norm.y, -norm.x);
-            Vector2 _start = vertices[i].VertexLocation + (norm * shortestSegment) + (right * 10);
-            Vector2 _end = vertices[i].NextVertex.VertexLocation + (norm * shortestSegment) + (right * -10);
+            Vector2 _start = w.vertices[i].VertexLocation + (norm * shortestSegment) + (right * 10);
+            Vector2 _end = w.vertices[i].NextVertex.VertexLocation + (norm * shortestSegment) + (right * -10);
 
             crossSegments.Add(new Line(_start, _end, 3));
         }
@@ -729,10 +849,10 @@ public class SmithingManager : MonoBehaviour {
                 crossSegments[(i - 1 + count) % count].end = point;
             }
 
-            GameObject t = GameObject.Instantiate(handlePrefab);
+            GameObject t = GameObject.Instantiate(vertPrefab);
             t.GetComponent<SpriteRenderer>().color = Color.red;
             Vertex v = t.GetComponent<Vertex>();
-            innerVertices.Add(v);
+            w.innerVertices.Add(v);
         }
 
         for (int i = 0; i < lineNormals.Count; i++) {
@@ -741,11 +861,11 @@ public class SmithingManager : MonoBehaviour {
             linesToDraw.Add(new Line(lineNormals[i].start, normalCrosses[i], 4));
             linesToDraw.Add(new Line(crossSegments[i].start, crossSegments[i].end, crossSegments[i].mode));
 
-            innerVertices[i].setPreviousVertex(innerVertices[(i - 1 + innerVertices.Count) % innerVertices.Count]);
-            innerVertices[i].setNextVertex(innerVertices[(i + 1) % innerVertices.Count]);
-            innerVertices[i].setVertexLocation(crossSegments[i].start);
-            innerVertices[i].gameObject.name = "Inner Vertex #" + i;
-            innerVertices[i].setID(vertices[i].ID);
+            w.innerVertices[i].setPreviousVertex(w.innerVertices[(i - 1 + w.innerVertices.Count) % w.innerVertices.Count]);
+            w.innerVertices[i].setNextVertex(w.innerVertices[(i + 1) % w.innerVertices.Count]);
+            w.innerVertices[i].setVertexLocation(crossSegments[i].start);
+            w.innerVertices[i].gameObject.name = "Inner Vertex #" + i;
+            w.innerVertices[i].setID(w.vertices[i].ID);
         }
 
         return true;
@@ -762,27 +882,27 @@ public class SmithingManager : MonoBehaviour {
         #region Ear Cutting
 
         // four arrays
-        List<Vertex> poly = new List<Vertex>(innerVertices.Count);
-        List<Vertex> reflex = new List<Vertex>(innerVertices.Count);
-        List<Vertex> convex = new List<Vertex>(innerVertices.Count);
-        List<Vertex> ears = new List<Vertex>(innerVertices.Count);
+        List<Vertex> poly = new List<Vertex>(w.innerVertices.Count);
+        List<Vertex> reflex = new List<Vertex>(w.innerVertices.Count);
+        List<Vertex> convex = new List<Vertex>(w.innerVertices.Count);
+        List<Vertex> ears = new List<Vertex>(w.innerVertices.Count);
 
         // populate lists
-        for (int i = 0; i < innerVertices.Count; i++) {
+        for (int i = 0; i < w.innerVertices.Count; i++) {
 
             // every vertex goes in
-            poly.Add(innerVertices[i]);
+            poly.Add(w.innerVertices[i]);
 
             // find whether the angle is convex or reflex
-            float det = determinate(innerVertices[(i - 1 + innerVertices.Count) % innerVertices.Count].VertexLocation, innerVertices[i].VertexLocation, innerVertices[(i + 1) % innerVertices.Count].VertexLocation);
+            float det = determinate(w.innerVertices[(i - 1 + w.innerVertices.Count) % w.innerVertices.Count].VertexLocation, w.innerVertices[i].VertexLocation, w.innerVertices[(i + 1) % w.innerVertices.Count].VertexLocation);
 
             if (det < 0) {
-                convex.Add(innerVertices[i]);
-                innerVertices[i].GetComponentInParent<SpriteRenderer>().color = new Color(255, 0, 0, 1f);
+                convex.Add(w.innerVertices[i]);
+                w.innerVertices[i].GetComponentInParent<SpriteRenderer>().color = new Color(255, 0, 0, 1f);
             }
             else {
-                reflex.Add(innerVertices[i]);
-                innerVertices[i].GetComponentInParent<SpriteRenderer>().color = new Color(0, 255, 0, 1f);
+                reflex.Add(w.innerVertices[i]);
+                w.innerVertices[i].GetComponentInParent<SpriteRenderer>().color = new Color(0, 255, 0, 1f);
             }
         }
 
@@ -1090,16 +1210,27 @@ public class SmithingManager : MonoBehaviour {
         Debug.Log("Mode is now in: " + mode);
     }
 
-    void updateMesh() {
-        weapon.Clear();
-        verts = new Vector3[vertices.Count];
 
-        for (int i = 0; i < vertices.Count; i++) {
-            verts[i] = vertices[i].VertexLocation;
-        }
+	public void saveWeapon() {
 
-        weapon.vertices = verts;
-        weapon.uv = uvs;
-        weapon.triangles = tris;
-    }
+		string text = nameField.text;
+
+		if (text == "") {
+			text = "Untitled" + (saveManager.fileCount() + 1);
+		}
+
+		w.name = text;
+
+		saveManager.saveWeapon (w, text);
+
+		Debug.Log (saveManager.fileCount ());
+	}
+
+	public void loadWeapon() {
+		
+	}
+
+	public void newWeapon() {
+		
+	}
 }

@@ -1,0 +1,28 @@
+{
+	"name": Untitled2
+	"connected": False
+	{
+		"ID": 0
+		"vertLoc": {"x":22.995155334472658,"y":11.061355590820313}
+		"nextVert": 1
+		"prevVert": 3
+	}
+	{
+		"ID": 1
+		"vertLoc": {"x":30.757205963134767,"y":3.6277670860290529}
+		"nextVert": 2
+		"prevVert": 0
+	}
+	{
+		"ID": 2
+		"vertLoc": {"x":14.350248336791993,"y":1.6927077770233155}
+		"nextVert": 3
+		"prevVert": 1
+	}
+	{
+		"ID": 3
+		"vertLoc": {"x":23.24593734741211,"y":5.989710807800293}
+		"nextVert": 0
+		"prevVert": 2
+	}
+}

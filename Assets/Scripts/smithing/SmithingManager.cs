@@ -80,7 +80,6 @@ public class SmithingManager : MonoBehaviour {
             vp.setVertexLocation(mousePos);
 
             switch (mode) {
-                /*
                 case "adding":
                     #region Adding
                     vertexPointer.GetComponent<SpriteRenderer>().color = new Color(0, 255, 0, 0.5f);
@@ -155,7 +154,6 @@ public class SmithingManager : MonoBehaviour {
                     }
                     break;
                 #endregion
-                */
                 case "removing":
                     #region Removing
                     vertexPointer.GetComponent<SpriteRenderer>().color = new Color(255, 0, 0, 0.5f);
@@ -260,6 +258,10 @@ public class SmithingManager : MonoBehaviour {
 
 
 
+        foreach (Vertex vt in vertices) {
+            if (vt.nextVert != null)
+                lines.addLine(vt.VertexLocation, vt.nextVert.VertexLocation, 0);
+        }
     }
 
     #region Input Methods
